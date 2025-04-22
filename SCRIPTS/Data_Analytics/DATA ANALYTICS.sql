@@ -66,10 +66,7 @@ SELECT player,
        RANK() OVER (ORDER BY (0.7 * Runs + 0.3 * (Wickets * 20)) DESC) AS Performance_Rank
 FROM gold.AllRound_States_ODI 
 
---19. **Find out players whose performance has improved over time (based on batting average year over year).**
---OUR DATA DONT HAVE ANY YEARLY DATA
-
---20. **Which 10 player has the best 'Batting Impact Score' calculated as (Runs Scored * Strike Rate) / 1000?**
+--19. **Which 10 player has the best 'Batting Impact Score' calculated as (Runs Scored * Strike Rate) / 1000?**
 SELECT top 10 Player,
            Country,
            Runs,
@@ -80,14 +77,63 @@ ORDER BY round((Runs*Srike_rate)/1000, 2) DESC
 
 ----------------------------------------------------------------------------------------------
 
---### **Advanced Analytics Questions (Deeper Analysis):**
---21. **Using a moving average, analyze the trend of a player's batting average across their career.**
---22. **Perform a year-by-year comparison of a team's overall bowling strike rate.**
---23. **Predict which current players are likely to reach 10,000 runs first using trend analysis.**
---24. **Cluster players into groups: 'Pure Batsman', 'Bowling All-Rounder', 'Batting All-Rounder', 'Pure Bowler' using batting and bowling stats.**
---25. **Calculate and visualize player consistency: Standard deviation of runs scored per match.**
---26. **Find correlation between batting strike rate and batting average.**
---27. **Perform a time series analysis on the number of centuries scored per year in ODIs.**
---28. **Predict the expected number of wickets for a bowler in the next 5 matches based on current form.**
---29. **Identify outliers: Players who have either extremely high or low performance compared to the average.**
---30. **Use linear regression to estimate runs scored based on balls faced and strike rate.**
+--20. **Cluster players into groups: 'Pure Batsman', 'All-Rounder','Pure Bowler' using batting and bowling stats.**
+
+SELECT DISTINCT T.Player_Name,
+                T.Country,
+                T.Runs,
+                L.Wickets,
+                CASE
+                    WHEN T.Runs >= 5000 AND L.Wickets <= 40 THEN 'Pure Batsman'
+                    WHEN T.Runs <= 5000 AND L.Wickets >= 40 THEN 'Pure Bowler'
+                    WHEN T.Runs >= 5000 AND L.Wickets >= 40 THEN 'All-Rounder'
+                    ELSE 'Not Classified'
+                END AS Player_Group
+FROM Gold.Batting_States T
+INNER JOIN Gold.Bowling_States L ON T.Player_Name = L.Player
+ORDER BY RUNS DESC 
+
+--21. **Calculate and visualize player consistency: Standard deviation of runs scored per match.**
+SELECT Player_Name,
+       ROUND(CAST(Runs AS FLOAT) / Matches, 2) AS Avg_Runs_Per_Match
+FROM GOLD.Batting_States
+WHERE Matches > 0
+ORDER BY ROUND(CAST(Runs AS FLOAT) / Matches, 2) DESC;
+
+--22. **Find correlation between batting strike rate and batting average.**
+WITH Stats AS
+  (SELECT [Avg_score] AS Batting_Avg,
+          [Srike_rate] AS Strike_Rate
+   FROM Silver.Batting_T20
+   WHERE [Avg_score] IS NOT NULL
+     AND [Srike_rate] IS NOT NULL) ,
+     Averages AS
+  (SELECT AVG(Batting_Avg) AS Avg_Batting_Avg,
+          AVG(Strike_Rate) AS Avg_Strike_Rate
+   FROM Stats)
+SELECT ROUND(SUM((Strike_Rate - A.Avg_Strike_Rate) * (Batting_Avg - A.Avg_Batting_Avg)) / (SQRT(SUM(POWER(Strike_Rate - A.Avg_Strike_Rate, 2))) * SQRT(SUM(POWER(Batting_Avg - A.Avg_Batting_Avg, 2)))), 2) AS Correlation_Coefficient
+FROM Stats
+CROSS JOIN Averages A;
+
+--23. **Predict the expected number of wickets for a bowler in the next 5 matches based on current form.**
+
+SELECT DISTINCT Player,
+                Matches,
+                Wickets,
+                ROUND(CASE
+                          WHEN Matches > 0 THEN (CAST(Wickets AS FLOAT) / Matches) * 5
+                          ELSE NULL
+                      END, 0) AS Expected_Wickets_Next_5_Matches
+FROM GOLD.Bowling_States
+WHERE Wickets IS NOT NULL
+ORDER BY Expected_Wickets_Next_5_Matches DESC;
+
+--24. **Identify outliers: Players who have either extremely high or low performance compared to the average.**
+
+SELECT Player,
+       Avg_score,
+       ROUND(Avg(Avg_score) over(), 2) AS OverallAvg
+FROM Silver.Batting_ODI
+GROUP BY Player,
+         Avg_score
+ORDER BY Avg_score DESC
